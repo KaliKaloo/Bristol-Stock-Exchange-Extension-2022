@@ -663,18 +663,31 @@ class Trader_PRZI(Trader):
         Trader.__init__(self, ttype, tid, balance, params, time)
 
         # unpack the params
+        # for all three of PRZI, PRSH, and PRDE params can include strat_min and strat_max
+        # for PRSH and PRDE params should include values for optimizer and k
+        # if no params specified then defaults to PRZI with strat values in [-1.0,+1.0]
+
+        # default parameter values
+        k = 1
+        f_value = 0.8
+        optimizer = None # no optimizer => plain non-adaptive PRZI
+        s_min = -1.0
+        s_max = +1.0
+        
+        # did call provide different params?
         if type(params) is dict:
-            k = params['k']
-            optimizer = params['optimizer']
+            if 'k' in params:
+                k = params['k']
+            if 'optimizer' in params:
+                optimizer = params['optimizer']
+            if 'f_value' in params:
+                f_value = params['f_value']
             s_min = params['strat_min']
             s_max = params['strat_max']
-        else:
-            optimizer = None
-            s_min = 0.0
-            s_max = 0.0
-
+        
         self.optmzr = optimizer     # this determines whether it's PRZI, PRSH, or PRDE
         self.k = k                  # number of sampling points (cf number of arms on a multi-armed-bandit, or pop-size)
+        self.f_value = f_value
         self.theta0 = 100           # threshold-function limit value
         self.m = 4                  # tangent-function multiplier
         self.strat_wait_time = 7200     # how many secs do we give any one strat before switching?
@@ -694,7 +707,7 @@ class Trader_PRZI(Trader):
                          's0_index': self.active_strat,    # s0 starts out as active strat
                          'snew_index': self.k,             # (k+1)th item of strategy list is DE's new strategy
                          'snew_stratval': None,            # assigned later
-                         'F': 0.8                          # differential weight -- usually between 0 and 2
+                         'F': self.f_value                         # differential weight -- usually between 0 and 2
         }
 
         start_time = time
@@ -704,9 +717,10 @@ class Trader_PRZI(Trader):
         lut_ask = None
 
         for s in range(self.k + 1):
-            # initialise each of the strategies in sequence: for PRSH, one random seed, then k-1 mutants of that seed
-            # for PRDE, use draws from uniform distbn over whole range
-            # the (k+1)th strategy is needed to hold s_new in differential evolution; it's not used in SHC.
+            # initialise each of the strategies in sequence: 
+            # for PRZI: only one strategy is needed
+            # for PRSH, one random initial strategy, then k-1 mutants of that initial strategy
+            # for PRDE, use draws from uniform distbn over whole range and a (k+1)th strategy is needed to hold s_new
             if s == 0:
                 strategy = random.uniform(self.strat_range_min, self.strat_range_max)
             else:
@@ -717,9 +731,16 @@ class Trader_PRZI(Trader):
                     # differential evolution: seed initial strategies across whole space
                     strategy = self.mutate_strat(self.strats[0]['stratval'], 'uniform_bounded_range')
                 else:
-                    sys.exit('bad self.optmzr when initializing PRZI strategies')
+                    # PRZI -- do nothing
+                    pass
             self.strats.append({'stratval': strategy, 'start_t': start_time,
                                 'profit': profit, 'pps': profit_per_second, 'lut_bid': lut_bid, 'lut_ask': lut_ask})
+            if self.optmzr is None:
+                # PRZI -- so we stop after one iteration
+                break
+            elif self.optmzr == 'PRSH' and s == self.k - 1:
+                # PRSH -- doesn't need the (k+1)th strategy
+                break
 
         if self.params == 'landscape-mapper':
             # replace seed+mutants set of strats with regularly-spaced strategy values over the whole range
@@ -1583,7 +1604,7 @@ def populate_market(traders_spec, traders, shuffle, verbose):
                     parameters = {'optimizer': 'PRSH', 'k': trader_params['k'],
                                   'strat_min': trader_params['s_min'], 'strat_max': trader_params['s_max']}
                 elif ttype == 'PRDE':
-                    parameters = {'optimizer': 'PRDE', 'k': trader_params['k'],
+                    parameters = {'optimizer': 'PRDE', 'k': trader_params['k'], 'f_value': trader_params['f_value'],
                                   'strat_min': trader_params['s_min'], 'strat_max': trader_params['s_max']}
                 else: # ttype=PRZI
                     parameters = {'optimizer': None, 'k': 1,
@@ -2172,4 +2193,3 @@ if __name__ == "__main__":
     # tdump.close()
     #
     # print(trialnumber)
-
