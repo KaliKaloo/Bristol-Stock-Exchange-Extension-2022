@@ -658,7 +658,7 @@ class Trader_PRZI(Trader):
     def __init__(self, ttype, tid, balance, params, time):
         # if params == "landscape-mapper" then it generates data for mapping the fitness landscape
 
-        verbose = False
+        verbose = True
 
         Trader.__init__(self, ttype, tid, balance, params, time)
 
