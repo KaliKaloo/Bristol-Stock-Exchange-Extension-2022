@@ -107,7 +107,7 @@ class Trader_PRZI_BEST1(Trader):
                 if self.optmzr == 'PRSH':
                     # simple stochastic hill climber: cluster other strats around strat_0
                     strategy = self.mutate_strat(self.strats[0]['stratval'], 'gauss')     # mutant of strats[0]
-                elif self.optmzr == 'PRDE':
+                elif self.optmzr == 'PRDE_BEST':
                     # differential evolution: seed initial strategies across whole space
                     strategy = self.mutate_strat(self.strats[0]['stratval'], 'uniform_bounded_range')
                 else:
@@ -569,7 +569,7 @@ class Trader_PRZI_BEST1(Trader):
                         print('s=%f start_t=%f, lifetime=%f, $=%f, pps=%f' %
                               (s['stratval'], s['start_t'], time-s['start_t'], s['profit'], s['pps']))
 
-        elif self.optmzr == 'PRDE':
+        elif self.optmzr == 'PRDE_BEST':
             # simple differential evolution
 
             # only initiate diff-evol once the active strat has been evaluated for long enough
@@ -591,7 +591,7 @@ class Trader_PRZI_BEST1(Trader):
                 elif self.diffevol['de_state'] == 'active_snew':
                     # now we've evaluated s_0 and s_new, so we can do DE adaptive step
                     if verbose:
-                        print('PRDE trader %s' % self.tid)
+                        print('PRDE_BEST trader %s' % self.tid)
                     i_0 = self.diffevol['s0_index']
                     i_new = self.diffevol['snew_index']
                     fit_0 = self.strats[i_0]['pps']
@@ -619,18 +619,39 @@ class Trader_PRZI_BEST1(Trader):
                     s2_index = stratlist[2]
                     s3_index = stratlist[3]
 
+                    fit1 = self.strats[s1_index]['stratval'] 
+                    fit2 = self.strats[s1_index]['stratval'] 
+                    fit3 = self.strats[s1_index]['stratval'] 
+                    
                     # unpack the actual strategy values
-                    s_best_stratval = self.strats[i_0]['stratval'] #best strategy so far is the current strategy sooooo
+                    # s_best_stratval = self.strats[i_0]['stratval'] #best strategy so far is the current strategy sooooo
 
-                    s1_stratval = self.strats[s1_index]['stratval'] #a
-                    s2_stratval = self.strats[s2_index]['stratval'] #b
-                    s3_stratval = self.strats[s3_index]['stratval'] #c
+                    best_strat
+                    s2_stratval
+                    s3_stratval
+
+                    if(fit1>fit2 & fit1>fit3):
+                        best_strat = self.strats[s1_index]['stratval']
+                        s2_stratval = self.strats[s2_index]['stratval']
+                        s3_stratval = self.strats[s3_index]['stratval']
+
+                    elif(fit2>fit1 & fit2>fit1):
+                        best_strat = self.strats[s2_index]['stratval']
+                        s2_stratval = self.strats[s1_index]['stratval']
+                        s3_stratval = self.strats[s3_index]['stratval']
+                    else:
+                        best_strat = self.strats[s3_index]['stratval']
+                        s2_stratval = self.strats[s1_index]['stratval']
+                        s3_stratval = self.strats[s2_index]['stratval']
+
+                    # s2_stratval = self.strats[s2_index]['stratval'] #b
+                    # s3_stratval = self.strats[s3_index]['stratval'] #c
 
                     # this is the differential evolution "adaptive step": create a new individual
                     # xy = xa + F*(xb-xc)
                     # change xa to be the best so far
                     # new_stratval = s1_stratval + self.diffevol['F'] * (s2_stratval - s3_stratval)
-                    new_stratval = s_best_stratval + self.diffevol['F'] * (s2_stratval - s3_stratval)
+                    new_stratval = best_strat + self.diffevol['F'] * (s2_stratval - s3_stratval)
 
                     # clip to bounds
                     new_stratval = max(-1, min(+1, new_stratval))

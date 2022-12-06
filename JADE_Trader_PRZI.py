@@ -2,7 +2,7 @@ import random
 from scipy.stats import cauchy
 
 
-class Trader_PRZI2_JADE(Trader):
+class Trader_PRZI_JADE(Trader):
 
     # how to mutate the strategy values when evolving / hill-climbing
     def mutate_strat(self, s, mode):
@@ -93,7 +93,7 @@ class Trader_PRZI2_JADE(Trader):
                          'snew_index': self.k,             # (k+1)th item of strategy list is DE's new strategy
                          'snew_stratval': None,            # assigned later
                          'F': self.f_value,                         # differential weight -- usually between 0 and 2
-                        #  'population_A': [0]*self.k,
+                         'population_A': [0]*self.k,
                          'population_P': random.sample(range(self.k), self.k),
                          'mu_f':self.mu_f,
                          'p':0.2,
@@ -118,7 +118,7 @@ class Trader_PRZI2_JADE(Trader):
                 if self.optmzr == 'PRSH':
                     # simple stochastic hill climber: cluster other strats around strat_0
                     strategy = self.mutate_strat(self.strats[0]['stratval'], 'gauss')     # mutant of strats[0]
-                elif self.optmzr == 'PRDE':
+                elif self.optmzr == 'PRDE_JADE':
                     # differential evolution: seed initial strategies across whole space
                     strategy = self.mutate_strat(self.strats[0]['stratval'], 'uniform_bounded_range')
                 else:
@@ -580,7 +580,7 @@ class Trader_PRZI2_JADE(Trader):
                         print('s=%f start_t=%f, lifetime=%f, $=%f, pps=%f' %
                               (s['stratval'], s['start_t'], time-s['start_t'], s['profit'], s['pps']))
 
-        elif self.optmzr == 'PRDE':
+        elif self.optmzr == 'PRDE_JADE':
             # simple differential evolution
 
             # only initiate diff-evol once the active strat has been evaluated for long enough
@@ -602,7 +602,7 @@ class Trader_PRZI2_JADE(Trader):
                 elif self.diffevol['de_state'] == 'active_snew':
                     # now we've evaluated s_0 and s_new, so we can do DE adaptive step
                     if verbose:
-                        print('PRDE trader %s' % self.tid)
+                        print('PRDE_JADE trader %s' % self.tid)
                 
                     i_0 = self.diffevol['s0_index']
                     i_new = self.diffevol['snew_index']
@@ -652,16 +652,17 @@ class Trader_PRZI2_JADE(Trader):
                     stratlist = list(range(0, self.k))    # create sequential list of strategy-numbers
                     random.shuffle(stratlist)
 
-                    x_r1 = self.diffevol['population_P'][stratlist[0]]
-                    x_i = self.diffevol['s0_index'] = stratlist[1] # s0 is next iteration's candidate for possible replacement
-
-                    # randomly choose xr2 != xig from union of population P and A
-                    # union_P_A = self.diffevol['population_P'] + self.diffevol['population_A']
-                    # random.shuffle(union_P_A)
-                    # x_r2 = union_P_A[3]
-
+                    x_i = self.diffevol['population_P'][stratlist[0]] 
+                    self.diffevol['s0_index'] = x_i # s0 is next iteration's candidate for possible replacement
+                    
+                    x_r1 = self.diffevol['population_P'][stratlist[1]]
                     # dimension is low so we don't need an archive population A of inferior solutions
-                    x_r2 = worseStrat
+                    x_r2 = self.diffevol['population_P'][stratlist[2]]
+
+                    # NP is low so we might need archive to relieve provide more diversity
+                    # union_P_A = self.diffevol['population_P']+self.diffevol['population_A']
+                    # random.shuffle(union_P_A)
+                    # x_r2 = union_P_A[0]
 
                     # unpack the actual strategy values
                     x_i_stratval = self.strats[x_i]['stratval']
@@ -671,6 +672,11 @@ class Trader_PRZI2_JADE(Trader):
 
                     new_stratval = x_i_stratval + self.diffevol['F'] * (x_best_stratval - x_i_stratval) + self.diffevol['F'] * (x_r1_stratval - x_r2_stratval)
 
+                    # clip to bounds
+                    new_stratval = max(-1, min(+1, new_stratval))
+
+                    # record it for future use (s0 will be evaluated first, then s_new)
+                    self.strats[self.diffevol['snew_index']]['stratval'] = new_stratval
 
                     # update mu_f value 
                     sum_F_squared = (sum(x ** 2 for x in range(1, len(self.diffevol['s_f']) + 1)))
@@ -678,39 +684,9 @@ class Trader_PRZI2_JADE(Trader):
                     
                     self.diffevol['mu_f'] = 0.9*self.diffevol['mu_f'] + 0.1*(sum_F_squared/sum_F)
 
-
-                #     # pick k individual strategies at random, but they must be distinct
-                #     stratlist = list(range(0, self.k))    # create sequential list of strategy-numbers
-                #     random.shuffle(stratlist)             # shuffle the list
-
-                #     # s0 is next iteration's candidate for possible replacement
-                #     self.diffevol['s0_index'] = stratlist[0]
-
-
-                #     # s1, s2, s3 used in DE to create new strategy, potential replacement for s0
-                #     s1_index = stratlist[1]
-                #     s2_index = stratlist[2]
-                #     s3_index = stratlist[3]
-
-                #     # unpack the actual strategy values
-
-                #     s1_stratval = self.strats[s1_index]['stratval'] #a
-                #     s2_stratval = self.strats[s2_index]['stratval'] #b
-                #     s3_stratval = self.strats[s3_index]['stratval'] #c
-
-                #     # this is the differential evolution "adaptive step": create a new individual
-                #     new_stratval = s1_stratval + self.diffevol['F'] * (s2_stratval - s3_stratval)
-
-                #     # clip to bounds
-                #     new_stratval = max(-1, min(+1, new_stratval))
-
-                #     # record it for future use (s0 will be evaluated first, then s_new)
-                #     self.strats[self.diffevol['snew_index']]['stratval'] = new_stratval
-
                     if verbose:
-                        print('DiffEvol: t=%.1f, s0=%d, s1=%d, (s=%+f), s2=%d, (s=%+f), s3=%d, (s=%+f), sNew=%+f' %
-                              (time, self.diffevol['s0_index'],
-                               s1_index, s1_stratval, s2_index, s2_stratval, s3_index, s3_stratval, new_stratval))
+                        print('DiffEvol: t=%.1f, s0=%d, sBest=%d, (s=%+f), s1=%d, (s=%+f), s2=%d, (s=%+f), sNew=%+f' %
+                              (time, self.diffevol['s0_index'], x_best, x_best_stratval, x_r1, x_r1_stratval, x_r2, x_r2_stratval, new_stratval))
 
                     # DC's intervention for fully converged populations
                     # is the stddev of the strategies in the population equal/close to zero?
